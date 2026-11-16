@@ -1,4 +1,3 @@
-
 @import "tailwindcss";
 
 /* ================================
@@ -27,7 +26,7 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 90px;
+  scroll-padding-top: 80px;
 }
 
 body {
@@ -35,6 +34,7 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   overflow-x: hidden;
+  animation: pageEntrance 0.8s ease both;
 }
 
 /* ================================
@@ -42,7 +42,7 @@ body {
 ================================ */
 
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -58,14 +58,6 @@ body {
   background: var(--gold);
 }
 
-/* ================================
-   PAGE ENTRANCE
-================================ */
-
-body {
-  animation: pageEntrance 1s ease both;
-}
-
 @keyframes pageEntrance {
   from {
     opacity: 0;
@@ -76,33 +68,18 @@ body {
 }
 
 /* ================================
-   NAVBAR
+   NAVBAR LINKS HOVER
 ================================ */
 
-header {
-  animation: navbarEntrance 0.9s ease both;
-}
-
-@keyframes navbarEntrance {
-  from {
-    opacity: 0;
-    transform: translateY(-25px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-header nav a {
+header nav a.nav-link {
   position: relative;
   transition: color 0.3s ease;
 }
 
-header nav a::after {
+header nav a.nav-link::after {
   content: "";
   position: absolute;
-  bottom: -8px;
+  bottom: -6px;
   left: 0;
   width: 0;
   height: 1px;
@@ -110,181 +87,12 @@ header nav a::after {
   transition: width 0.35s ease;
 }
 
-header nav a:hover::after {
+header nav a.nav-link:hover::after {
   width: 100%;
 }
 
 /* ================================
-   HERO ANIMATIONS
-================================ */
-
-#home > div:first-child {
-  animation: goldenGlow 8s ease-in-out infinite alternate;
-}
-
-@keyframes goldenGlow {
-  from {
-    opacity: 0.45;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1.08);
-  }
-}
-
-#home h1 {
-  animation: heroTitle 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-#home h1 span {
-  display: inline-block;
-  animation: goldTextReveal 1.5s ease 0.3s both;
-}
-
-#home p {
-  animation: fadeUp 1s ease 0.35s both;
-}
-
-#home a {
-  transition:
-    transform 0.35s ease,
-    background 0.35s ease,
-    color 0.35s ease,
-    border-color 0.35s ease;
-}
-
-#home a:hover {
-  transform: translateY(-4px);
-}
-
-@keyframes heroTitle {
-  from {
-    opacity: 0;
-    transform: translateY(45px);
-    filter: blur(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-
-@keyframes goldTextReveal {
-  from {
-    opacity: 0;
-    filter: blur(8px);
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(25px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ================================
-   HERO BRAND MARK
-================================ */
-
-#home .font-serif {
-  animation: brandFloat 5s ease-in-out infinite;
-}
-
-@keyframes brandFloat {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-12px);
-  }
-}
-
-/* ================================
-   GOLDEN DECORATIVE RINGS
-================================ */
-
-#home .rounded-full.border {
-  animation: ringPulse 7s ease-in-out infinite alternate;
-}
-
-@keyframes ringPulse {
-  from {
-    transform: scale(0.96);
-    opacity: 0.45;
-  }
-  to {
-    transform: scale(1.06);
-    opacity: 1;
-  }
-}
-
-/* ================================
-   FEATURE STRIP
-================================ */
-
-section .grid > div {
-  transition:
-    background 0.35s ease,
-    transform 0.35s ease;
-}
-
-section .grid > div:hover {
-  background: rgba(197, 163, 106, 0.045);
-}
-
-/* ================================
-   PRODUCT CARDS
-================================ */
-
-article {
-  animation: cardEntrance 0.8s ease both;
-  transition:
-    transform 0.4s ease,
-    border-color 0.4s ease,
-    box-shadow 0.4s ease;
-}
-
-article:hover {
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
-}
-
-article img {
-  transition:
-    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1),
-    filter 0.5s ease;
-}
-
-article:hover img {
-  transform: scale(1.07);
-  filter: brightness(1.08);
-}
-
-@keyframes cardEntrance {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ================================
-   BUTTONS
+   BUTTONS & INPUTS
 ================================ */
 
 button {
@@ -299,63 +107,13 @@ a {
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--gold);
-  outline-offset: 4px;
+  outline-offset: 3px;
 }
-
-/* ================================
-   SECTION DIVIDERS
-================================ */
 
 section,
 footer {
   border-color: var(--border);
 }
-
-/* ================================
-   ABOUT SECTION
-================================ */
-
-#about h2 {
-  animation: fadeUp 1s ease both;
-}
-
-/* ================================
-   ACCESSIBILITY
-================================ */
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* ================================
-   MOBILE
-================================ */
-
-@media (max-width: 768px) {
-  #home {
-    min-height: 600px;
-  }
-
-  #home h1 {
-    font-size: 3rem;
-  }
-
-  #home .relative {
-    max-width: 100%;
-  }
-
-  article:hover {
-    transform: none;
-  }
-}
-
 
 .checkout-input {
   width: 100%;
@@ -374,4 +132,25 @@ footer {
 
 .checkout-input::placeholder {
   color: rgba(255, 255, 255, 0.28);
+}
+
+/* ================================
+   ACCESSIBILITY & MOBILE
+================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 768px) {
+  article:hover {
+    transform: none;
+  }
 }

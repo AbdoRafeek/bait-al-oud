@@ -1,9 +1,8 @@
-
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -38,6 +37,7 @@ type CartItem = {
 
 function ProductDetailsContent() {
   const params = useParams<{ slug: string }>();
+  const router = useRouter();
   const slug = params.slug;
 
   const shouldReduceMotion = useReducedMotion();
@@ -125,7 +125,7 @@ function ProductDetailsContent() {
     };
   }, [slug]);
 
-  function addToCart() {
+  function addToCart(redirectToCheckout = false) {
     if (!product || !selectedVariant || selectedVariant.stock <= 0) {
       return;
     }
@@ -169,6 +169,10 @@ function ProductDetailsContent() {
 
       localStorage.setItem("bait-al-oud-cart", JSON.stringify(cart));
       setAdded(true);
+
+      if (redirectToCheckout) {
+        router.push("/checkout");
+      }
     } catch (cartError) {
       console.error("Cart error:", cartError);
       alert(
@@ -470,34 +474,47 @@ function ProductDetailsContent() {
             </div>
           )}
 
-          {/* ADD TO CART */}
-          <motion.button
-            whileHover={
-              shouldReduceMotion || outOfStock ? {} : { y: -3 }
-            }
-            whileTap={
-              shouldReduceMotion || outOfStock ? {} : { scale: 0.98 }
-            }
-            disabled={outOfStock}
-            onClick={addToCart}
-            className={`w-full py-5 text-xs font-semibold tracking-[0.2em] transition ${
-              outOfStock
-                ? "cursor-not-allowed bg-white/10 text-white/30"
-                : "bg-[#c5a36a] text-black hover:bg-[#dfc18b]"
-            }`}
-          >
-            {outOfStock
-              ? isArabic
-                ? "غير متاح حاليًا"
-                : "CURRENTLY UNAVAILABLE"
-              : added
+          {/* ACTION BUTTONS */}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <motion.button
+              whileHover={
+                shouldReduceMotion || outOfStock ? {} : { y: -3 }
+              }
+              whileTap={
+                shouldReduceMotion || outOfStock ? {} : { scale: 0.98 }
+              }
+              disabled={outOfStock}
+              onClick={() => addToCart(false)}
+              className={`flex-1 py-5 text-xs font-semibold tracking-[0.2em] transition ${
+                outOfStock
+                  ? "cursor-not-allowed border border-white/10 bg-white/5 text-white/30"
+                  : "border border-[#c5a36a] text-[#c5a36a] hover:bg-[#c5a36a]/10"
+              }`}
+            >
+              {outOfStock
                 ? isArabic
-                  ? "تمت الإضافة للسلة ✓"
-                  : "ADDED TO CART ✓"
-                : isArabic
-                  ? "أضف إلى السلة"
-                  : "ADD TO CART"}
-          </motion.button>
+                  ? "غير متاح حاليًا"
+                  : "CURRENTLY UNAVAILABLE"
+                : added
+                  ? isArabic
+                    ? "تمت الإضافة للسلة ✓"
+                    : "ADDED TO CART ✓"
+                  : isArabic
+                    ? "أضف إلى السلة"
+                    : "ADD TO CART"}
+            </motion.button>
+
+            {!outOfStock && (
+              <motion.button
+                whileHover={shouldReduceMotion ? {} : { y: -3 }}
+                whileTap={shouldReduceMotion ? {} : { scale: 0.98 }}
+                onClick={() => addToCart(true)}
+                className="flex-1 bg-[#c5a36a] py-5 text-xs font-semibold tracking-[0.2em] text-black transition hover:bg-[#dfc18b]"
+              >
+                {isArabic ? "شراء الآن" : "BUY NOW"}
+              </motion.button>
+            )}
+          </div>
 
           {added && (
             <Link

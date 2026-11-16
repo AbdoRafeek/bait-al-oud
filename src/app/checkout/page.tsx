@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -35,21 +34,18 @@ type PaymentMethod = "vodafone_cash" | "instapay";
 
 const CART_KEY = "bait-al-oud-cart";
 
-const paymentDetails = {
-  vodafone_cash: {
-    name: "Vodafone Cash",
-    account: "01092841181",
-  },
-  instapay: {
-    name: "InstaPay",
-    account: "rafeek_1@instapay",
-  },
-};
-
 export default function CheckoutPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [pageReady, setPageReady] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const [storeSettings, setStoreSettings] = useState({
+    vodafone_cash_number: "01092841181",
+    instapay_account: "abdoehab_1@instapay",
+    shipping_fee: 0,
+    free_shipping_minimum: null as number | null,
+    is_store_open: true,
+  });
 
   const [customer, setCustomer] = useState({
     name: "",
@@ -68,7 +64,10 @@ export default function CheckoutPage() {
   const [transactionReference, setTransactionReference] = useState("");
 
   const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discount: number;
+  } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
 
@@ -76,32 +75,94 @@ export default function CheckoutPage() {
   const [successOrder, setSuccessOrder] = useState("");
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(CART_KEY);
+    let active = true;
 
-      if (saved) {
-        const parsed = JSON.parse(saved);
+    async function initCheckout() {
+      try {
+        const saved = localStorage.getItem(CART_KEY);
 
-        if (Array.isArray(parsed)) {
-          setCart(parsed);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+
+          if (Array.isArray(parsed)) {
+            setCart(parsed);
+          }
         }
+      } catch {
+        setCart([]);
       }
-    } catch {
-      setCart([]);
+
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("store_settings")
+          .select(
+            "vodafone_cash_number, instapay_account, shipping_fee, free_shipping_minimum, is_store_open"
+          )
+          .eq("id", 1)
+          .maybeSingle();
+
+        if (active && data) {
+          setStoreSettings({
+            vodafone_cash_number:
+              data.vodafone_cash_number || "01092841181",
+            instapay_account:
+              data.instapay_account || "abdoehab_1@instapay",
+            shipping_fee: Number(data.shipping_fee ?? 0),
+            free_shipping_minimum:
+              data.free_shipping_minimum !== null
+                ? Number(data.free_shipping_minimum)
+                : null,
+            is_store_open: data.is_store_open ?? true,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load store settings:", err);
+      }
+
+      if (active) {
+        setPageReady(true);
+      }
     }
 
-    setPageReady(true);
+    initCheckout();
+
+    return () => {
+      active = false;
+    };
   }, []);
+
+  const paymentDetails = useMemo(
+    () => ({
+      vodafone_cash: {
+        name: "Vodafone Cash",
+        account: storeSettings.vodafone_cash_number,
+      },
+      instapay: {
+        name: "InstaPay",
+        account: storeSettings.instapay_account,
+      },
+    }),
+    [storeSettings]
+  );
 
   const subtotal = useMemo(() => {
     return cart.reduce(
-      (sum, item) =>
-        sum + Number(item.price) * Number(item.quantity),
+      (sum, item) => sum + Number(item.price) * Number(item.quantity),
       0
     );
   }, [cart]);
 
-  const shipping = 0;
+  const shipping = useMemo(() => {
+    if (
+      storeSettings.free_shipping_minimum !== null &&
+      subtotal >= storeSettings.free_shipping_minimum
+    ) {
+      return 0;
+    }
+    return storeSettings.shipping_fee;
+  }, [subtotal, storeSettings]);
+
   const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
   const total = Math.max(0, subtotal + shipping - discount);
 
@@ -123,10 +184,13 @@ export default function CheckoutPage() {
     setError("");
     try {
       const supabase = createClient();
-      const { data, error: couponError } = await supabase.rpc("validate_store_coupon", {
-        p_code: code,
-        p_subtotal: subtotal,
-      });
+      const { data, error: couponError } = await supabase.rpc(
+        "validate_store_coupon",
+        {
+          p_code: code,
+          p_subtotal: subtotal,
+        }
+      );
       if (couponError) throw new Error(couponError.message);
 
       const result = Array.isArray(data) ? data[0] : data;
@@ -144,7 +208,9 @@ export default function CheckoutPage() {
       setCouponMessage("Coupon applied successfully.");
     } catch (err) {
       setAppliedCoupon(null);
-      setCouponMessage(err instanceof Error ? err.message : "Could not validate this coupon.");
+      setCouponMessage(
+        err instanceof Error ? err.message : "Could not validate this coupon."
+      );
     } finally {
       setCouponLoading(false);
     }
@@ -156,10 +222,7 @@ export default function CheckoutPage() {
     setCouponMessage("Coupon removed.");
   }
 
-  function updateCustomer(
-    field: keyof typeof customer,
-    value: string
-  ) {
+  function updateCustomer(field: keyof typeof customer, value: string) {
     setCustomer((current) => ({
       ...current,
       [field]: value,
@@ -169,9 +232,7 @@ export default function CheckoutPage() {
   function selectProof(file?: File) {
     if (!file) return;
 
-    if (
-      !["image/jpeg", "image/png", "image/webp"].includes(file.type)
-    ) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setError("Please upload a JPG, PNG, or WebP image.");
       return;
     }
@@ -197,6 +258,11 @@ export default function CheckoutPage() {
     event.preventDefault();
     setError("");
 
+    if (!storeSettings.is_store_open) {
+      setError("The store is currently closed and not accepting orders.");
+      return;
+    }
+
     if (cart.length === 0) {
       setError("Your cart is empty.");
       return;
@@ -219,10 +285,7 @@ export default function CheckoutPage() {
 
     if (
       cart.some(
-        (item) =>
-          !item.productId ||
-          !item.size ||
-          item.quantity < 1
+        (item) => !item.productId || !item.size || item.quantity < 1
       )
     ) {
       setError("Your cart contains invalid items. Please review it.");
@@ -235,10 +298,9 @@ export default function CheckoutPage() {
       const supabase = createClient();
 
       // STEP 1: Create the order in Supabase.
-      // IMPORTANT: These field names must match the SQL function.
-
-      const { data: orderData, error: orderError } =
-        await supabase.rpc("create_store_order", {
+      const { data: orderData, error: orderError } = await supabase.rpc(
+        "create_store_order",
+        {
           p_customer: {
             customer_name: customer.name.trim(),
             phone: customer.phone.trim(),
@@ -256,15 +318,14 @@ export default function CheckoutPage() {
 
           p_payment_method: paymentMethod,
           p_coupon_code: appliedCoupon?.code || null,
-        });
+        }
+      );
 
       if (orderError) {
         throw new Error(orderError.message);
       }
 
-      const order = Array.isArray(orderData)
-        ? orderData[0]
-        : orderData;
+      const order = Array.isArray(orderData) ? orderData[0] : orderData;
 
       const orderNumber = order?.order_number;
 
@@ -275,7 +336,6 @@ export default function CheckoutPage() {
       }
 
       // STEP 2: Upload payment proof to Cloudinary.
-
       const formData = new FormData();
       formData.append("file", proofFile);
 
@@ -298,15 +358,13 @@ export default function CheckoutPage() {
       }
 
       // STEP 3: Attach payment proof to the created order.
-
       const { error: proofError } = await supabase.rpc(
         "submit_payment_proof",
         {
           p_order_number: orderNumber,
           p_phone: customer.phone.trim(),
           p_payment_proof_url: uploadData.imageUrl,
-          p_transaction_reference:
-            transactionReference.trim() || null,
+          p_transaction_reference: transactionReference.trim() || null,
         }
       );
 
@@ -317,7 +375,6 @@ export default function CheckoutPage() {
       }
 
       // STEP 4: Clear cart only after successful submission.
-
       localStorage.removeItem(CART_KEY);
       setCart([]);
       setSuccessOrder(orderNumber);
@@ -337,16 +394,12 @@ export default function CheckoutPage() {
   if (!pageReady) {
     return (
       <main className="min-h-screen bg-[#090909] text-white flex items-center justify-center">
-        <Loader2
-          className="animate-spin text-[#c9a45c]"
-          size={30}
-        />
+        <Loader2 className="animate-spin text-[#c9a45c]" size={30} />
       </main>
     );
   }
 
   // SUCCESS SCREEN
-
   if (successOrder) {
     return (
       <main className="min-h-screen bg-[#090909] text-white flex items-center justify-center px-5">
@@ -360,19 +413,15 @@ export default function CheckoutPage() {
             Order submitted
           </p>
 
-          <h1 className="text-3xl font-serif mb-4">
-            Thank You
-          </h1>
+          <h1 className="text-3xl font-serif mb-4">Thank You</h1>
 
           <p className="text-white/60 mb-5">
-            Your order and payment proof have been submitted.
-            Your payment is pending manual verification.
+            Your order and payment proof have been submitted. Your payment is
+            pending manual verification.
           </p>
 
           <div className="bg-black border border-white/10 rounded-xl p-4 mb-7">
-            <p className="text-white/40 text-xs mb-2">
-              Order Number
-            </p>
+            <p className="text-white/40 text-xs mb-2">Order Number</p>
 
             <p className="text-[#c9a45c] text-xl font-semibold">
               {successOrder}
@@ -402,13 +451,9 @@ export default function CheckoutPage() {
   return (
     <main className="min-h-screen bg-[#090909] text-white">
       {/* HEADER */}
-
       <header className="border-b border-white/10 px-5 py-6">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <Link
-            href="/"
-            className="text-xl tracking-[0.18em] font-serif"
-          >
+          <Link href="/" className="text-xl tracking-[0.18em] font-serif">
             BAIT <span className="text-[#c9a45c]">AL OUD</span>
           </Link>
 
@@ -424,36 +469,40 @@ export default function CheckoutPage() {
 
       <div className="max-w-6xl mx-auto px-5 py-12">
         {/* PAGE TITLE */}
-
         <div className="mb-10">
           <p className="text-[#c9a45c] text-xs tracking-[0.3em] uppercase mb-3">
             Complete your purchase
           </p>
 
-          <h1 className="text-4xl md:text-5xl font-serif">
-            Checkout
-          </h1>
+          <h1 className="text-4xl md:text-5xl font-serif">Checkout</h1>
 
           <p className="text-white/45 mt-3">
             Complete your details and submit your payment proof.
           </p>
         </div>
 
-        {cart.length === 0 ? (
+        {!storeSettings.is_store_open ? (
+          <div className="border border-red-500/30 bg-[#111] rounded-2xl p-10 text-center">
+            <h2 className="text-2xl font-serif mb-3 text-red-300">
+              Store Temporarily Closed
+            </h2>
+            <p className="text-white/60 mb-5">
+              We are currently not accepting new orders. Please check back soon.
+            </p>
+            <Link href="/" className="text-[#c9a45c] underline">
+              Return to Home
+            </Link>
+          </div>
+        ) : cart.length === 0 ? (
           <div className="border border-white/10 bg-[#111] rounded-2xl p-10 text-center">
             <ShoppingBag
               size={40}
               className="mx-auto text-[#c9a45c] mb-4"
             />
 
-            <h2 className="text-2xl font-serif mb-3">
-              Your cart is empty
-            </h2>
+            <h2 className="text-2xl font-serif mb-3">Your cart is empty</h2>
 
-            <Link
-              href="/products"
-              className="text-[#c9a45c] underline"
-            >
+            <Link href="/products" className="text-[#c9a45c] underline">
               Explore perfumes
             </Link>
           </div>
@@ -463,9 +512,7 @@ export default function CheckoutPage() {
             className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8"
           >
             <div className="space-y-7">
-
               {/* CUSTOMER INFORMATION */}
-
               <section className="bg-[#111] border border-white/10 rounded-2xl p-6 md:p-8">
                 <h2 className="text-xl font-serif mb-6">
                   01. Customer Information
@@ -476,9 +523,7 @@ export default function CheckoutPage() {
                     <input
                       required
                       value={customer.name}
-                      onChange={(e) =>
-                        updateCustomer("name", e.target.value)
-                      }
+                      onChange={(e) => updateCustomer("name", e.target.value)}
                       className="checkout-input"
                       placeholder="Your full name"
                     />
@@ -489,9 +534,7 @@ export default function CheckoutPage() {
                       required
                       type="tel"
                       value={customer.phone}
-                      onChange={(e) =>
-                        updateCustomer("phone", e.target.value)
-                      }
+                      onChange={(e) => updateCustomer("phone", e.target.value)}
                       className="checkout-input"
                       placeholder="01XXXXXXXXX"
                     />
@@ -501,9 +544,7 @@ export default function CheckoutPage() {
                     <input
                       type="email"
                       value={customer.email}
-                      onChange={(e) =>
-                        updateCustomer("email", e.target.value)
-                      }
+                      onChange={(e) => updateCustomer("email", e.target.value)}
                       className="checkout-input"
                       placeholder="you@example.com"
                     />
@@ -513,9 +554,7 @@ export default function CheckoutPage() {
                     <input
                       required
                       value={customer.city}
-                      onChange={(e) =>
-                        updateCustomer("city", e.target.value)
-                      }
+                      onChange={(e) => updateCustomer("city", e.target.value)}
                       className="checkout-input"
                       placeholder="Your city"
                     />
@@ -541,9 +580,7 @@ export default function CheckoutPage() {
                       <textarea
                         rows={2}
                         value={customer.notes}
-                        onChange={(e) =>
-                          updateCustomer("notes", e.target.value)
-                        }
+                        onChange={(e) => updateCustomer("notes", e.target.value)}
                         className="checkout-input resize-none"
                         placeholder="Additional delivery instructions..."
                       />
@@ -553,7 +590,6 @@ export default function CheckoutPage() {
               </section>
 
               {/* COUPON CODE */}
-
               <section className="bg-[#111] border border-white/10 rounded-2xl p-6 md:p-8">
                 <h2 className="text-xl font-serif mb-2">Discount Code</h2>
                 <p className="text-white/40 text-sm mb-5">
@@ -589,64 +625,69 @@ export default function CheckoutPage() {
                       disabled={couponLoading || loading || !couponCode.trim()}
                       className="bg-[#c9a45c] hover:bg-[#dfbd78] disabled:opacity-50 text-black font-semibold px-6 py-3 rounded-lg transition flex items-center justify-center gap-2"
                     >
-                      {couponLoading && <Loader2 className="animate-spin" size={17} />}
+                      {couponLoading && (
+                        <Loader2 className="animate-spin" size={17} />
+                      )}
                       {couponLoading ? "Checking..." : "Apply"}
                     </button>
                   )}
                 </div>
 
                 {couponMessage && (
-                  <p className={`text-sm mt-3 ${appliedCoupon ? "text-green-400" : "text-white/55"}`}>
+                  <p
+                    className={`text-sm mt-3 ${
+                      appliedCoupon ? "text-green-400" : "text-white/55"
+                    }`}
+                  >
                     {couponMessage}
                   </p>
                 )}
               </section>
 
               {/* PAYMENT METHOD */}
-
               <section className="bg-[#111] border border-white/10 rounded-2xl p-6 md:p-8">
                 <h2 className="text-xl font-serif mb-6">
                   02. Payment Method
                 </h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(
-                    ["vodafone_cash", "instapay"] as PaymentMethod[]
-                  ).map((method) => (
-                    <button
-                      key={method}
-                      type="button"
-                      onClick={() => setPaymentMethod(method)}
-                      className={`text-left p-5 rounded-xl border transition ${
-                        paymentMethod === method
-                          ? "border-[#c9a45c] bg-[#c9a45c]/10"
-                          : "border-white/10 hover:border-white/30"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <CreditCard
-                          className="text-[#c9a45c]"
-                          size={23}
-                        />
+                  {(["vodafone_cash", "instapay"] as PaymentMethod[]).map(
+                    (method) => (
+                      <button
+                        key={method}
+                        type="button"
+                        onClick={() => setPaymentMethod(method)}
+                        className={`text-left p-5 rounded-xl border transition ${
+                          paymentMethod === method
+                            ? "border-[#c9a45c] bg-[#c9a45c]/10"
+                            : "border-white/10 hover:border-white/30"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <CreditCard
+                            className="text-[#c9a45c]"
+                            size={23}
+                          />
 
-                        <span
-                          className={`w-4 h-4 rounded-full border ${
-                            paymentMethod === method
-                              ? "border-[#c9a45c] bg-[#c9a45c]"
-                              : "border-white/40"
-                          }`}
-                        />
-                      </div>
+                          <span
+                            className={`w-4 h-4 rounded-full border ${
+                              paymentMethod === method
+                                ? "border-[#c9a45c] bg-[#c9a45c]"
+                                : "border-white/40"
+                            }`}
+                          />
+                        </div>
 
-                      <p className="font-semibold">
-                        {paymentDetails[method].name}
-                      </p>
+                        <p className="font-semibold">
+                          {paymentDetails[method].name}
+                        </p>
 
-                      <p className="text-white/45 text-sm mt-2 break-all">
-                        {paymentDetails[method].account}
-                      </p>
-                    </button>
-                  ))}
+                        <p className="text-white/45 text-sm mt-2 break-all">
+                          {paymentDetails[method].account}
+                        </p>
+                      </button>
+                    )
+                  )}
                 </div>
 
                 <div className="mt-6 bg-black border border-[#c9a45c]/20 rounded-xl p-5">
@@ -675,14 +716,13 @@ export default function CheckoutPage() {
                   </button>
 
                   <p className="text-white/40 text-xs mt-4">
-                    Transfer the exact total amount, then upload a
-                    screenshot of your payment.
+                    Transfer the exact total amount, then upload a screenshot of
+                    your payment.
                   </p>
                 </div>
               </section>
 
               {/* PAYMENT PROOF */}
-
               <section className="bg-[#111] border border-white/10 rounded-2xl p-6 md:p-8">
                 <h2 className="text-xl font-serif mb-6">
                   03. Payment Confirmation
@@ -691,9 +731,7 @@ export default function CheckoutPage() {
                 <Field label="Transaction Reference (Optional)">
                   <input
                     value={transactionReference}
-                    onChange={(e) =>
-                      setTransactionReference(e.target.value)
-                    }
+                    onChange={(e) => setTransactionReference(e.target.value)}
                     className="checkout-input"
                     placeholder="Transaction ID / reference"
                   />
@@ -726,10 +764,7 @@ export default function CheckoutPage() {
                     </div>
                   ) : (
                     <label className="flex flex-col items-center justify-center gap-3 border border-dashed border-white/20 hover:border-[#c9a45c] rounded-xl p-9 cursor-pointer transition">
-                      <Upload
-                        className="text-[#c9a45c]"
-                        size={30}
-                      />
+                      <Upload className="text-[#c9a45c]" size={30} />
 
                       <span className="text-sm text-white/70">
                         Click to upload payment screenshot
@@ -743,9 +778,7 @@ export default function CheckoutPage() {
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
                         className="hidden"
-                        onChange={(e) =>
-                          selectProof(e.target.files?.[0])
-                        }
+                        onChange={(e) => selectProof(e.target.files?.[0])}
                       />
                     </label>
                   )}
@@ -753,14 +786,11 @@ export default function CheckoutPage() {
                   {proofPreview && (
                     <label className="inline-flex mt-3 text-sm text-[#c9a45c] underline cursor-pointer">
                       Change image
-
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
                         className="hidden"
-                        onChange={(e) =>
-                          selectProof(e.target.files?.[0])
-                        }
+                        onChange={(e) => selectProof(e.target.files?.[0])}
                       />
                     </label>
                   )}
@@ -768,7 +798,6 @@ export default function CheckoutPage() {
               </section>
 
               {/* ERROR MESSAGE */}
-
               {error && (
                 <div className="border border-red-500/30 bg-red-500/10 text-red-300 rounded-xl p-4 text-sm">
                   {error}
@@ -776,7 +805,6 @@ export default function CheckoutPage() {
               )}
 
               {/* SUBMIT BUTTON */}
-
               <button
                 type="submit"
                 disabled={loading || cart.length === 0}
@@ -784,10 +812,7 @@ export default function CheckoutPage() {
               >
                 {loading ? (
                   <>
-                    <Loader2
-                      className="animate-spin"
-                      size={19}
-                    />
+                    <Loader2 className="animate-spin" size={19} />
                     Submitting Order...
                   </>
                 ) : (
@@ -799,17 +824,13 @@ export default function CheckoutPage() {
               </button>
 
               <p className="text-xs text-white/35 text-center">
-                Your payment will remain pending until it is
-                manually verified.
+                Your payment will remain pending until it is manually verified.
               </p>
             </div>
 
             {/* ORDER SUMMARY */}
-
             <aside className="h-fit bg-[#111] border border-white/10 rounded-2xl p-6 lg:sticky lg:top-6">
-              <h2 className="text-xl font-serif mb-6">
-                Order Summary
-              </h2>
+              <h2 className="text-xl font-serif mb-6">Order Summary</h2>
 
               <div className="space-y-5">
                 {cart.map((item, index) => (
@@ -838,9 +859,7 @@ export default function CheckoutPage() {
 
                       <p className="text-sm text-[#c9a45c] mt-2">
                         EGP{" "}
-                        {(item.price * item.quantity).toLocaleString(
-                          "en-EG"
-                        )}
+                        {(item.price * item.quantity).toLocaleString("en-EG")}
                       </p>
                     </div>
                   </div>
@@ -848,20 +867,18 @@ export default function CheckoutPage() {
               </div>
 
               <div className="border-t border-white/10 mt-6 pt-5 space-y-3">
-                <SummaryRow
-                  label="Subtotal"
-                  value={subtotal}
-                />
+                <SummaryRow label="Subtotal" value={subtotal} />
 
-                <SummaryRow
-                  label="Shipping"
-                  value={shipping}
-                />
+                <SummaryRow label="Shipping" value={shipping} />
 
                 {appliedCoupon && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-green-400">Discount ({appliedCoupon.code})</span>
-                    <span className="text-green-400">- EGP {discount.toLocaleString("en-EG")}</span>
+                    <span className="text-green-400">
+                      Discount ({appliedCoupon.code})
+                    </span>
+                    <span className="text-green-400">
+                      - EGP {discount.toLocaleString("en-EG")}
+                    </span>
                   </div>
                 )}
 
@@ -874,8 +891,7 @@ export default function CheckoutPage() {
                 </div>
 
                 <p className="text-xs text-white/35">
-                  Final total is calculated and validated by the
-                  store database.
+                  Final total is calculated and validated by the store database.
                 </p>
               </div>
             </aside>
@@ -895,29 +911,19 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm text-white/65 mb-2">
-        {label}
-      </label>
+      <label className="block text-sm text-white/65 mb-2">{label}</label>
 
       {children}
     </div>
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
+function SummaryRow({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex justify-between text-sm">
       <span className="text-white/45">{label}</span>
 
-      <span>
-        EGP {value.toLocaleString("en-EG")}
-      </span>
+      <span>EGP {value.toLocaleString("en-EG")}</span>
     </div>
   );
 }

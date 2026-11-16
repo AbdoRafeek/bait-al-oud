@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +12,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Sparkles,
+  Menu,
+  X,
+  ShoppingBag,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -42,12 +44,24 @@ type Variant = {
   price: number;
 };
 
+type CartItem = {
+  productId: string;
+  slug: string;
+  name: string;
+  imageUrl: string | null;
+  size: number;
+  price: number;
+  quantity: number;
+};
+
+const CART_KEY = "bait-al-oud-cart";
+
 const reveal = {
-  hidden: { opacity: 0, y: 45 },
+  hidden: { opacity: 0, y: 35 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.8, ease: "easeOut" as const },
+    transition: { duration: 0.7, ease: "easeOut" as const },
   },
 };
 
@@ -55,7 +69,7 @@ const stagger = {
   hidden: {},
   visible: {
     transition: {
-      staggerChildren: 0.16,
+      staggerChildren: 0.14,
     },
   },
 };
@@ -67,6 +81,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [language, setLanguage] = useState<"en" | "ar">("en");
   const [cartCount, setCartCount] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isArabic = language === "ar";
   const shouldReduceMotion = useReducedMotion();
@@ -78,10 +93,23 @@ export default function Home() {
     offset: ["start start", "end start"],
   });
 
-  const heroY = useTransform(scrollYProgress, [0, 1], [0, 130]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0.2]);
+  const heroY = useTransform(scrollYProgress, [0, 1], [0, 100]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.85], [1, 0.25]);
 
   useEffect(() => {
+    try {
+      const savedCart = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+      if (Array.isArray(savedCart)) {
+        const total = savedCart.reduce(
+          (sum: number, item: CartItem) => sum + (Number(item.quantity) || 0),
+          0
+        );
+        setCartCount(total);
+      }
+    } catch {
+      setCartCount(0);
+    }
+
     async function loadProducts() {
       const supabase = createClient();
 
@@ -120,7 +148,10 @@ export default function Home() {
         const { data: variants, error: variantsError } = await supabase
           .from("product_variants")
           .select("product_id, size_ml, price")
-          .in("product_id", items.map((item) => item.id))
+          .in(
+            "product_id",
+            items.map((item) => item.id)
+          )
           .eq("is_active", true)
           .order("price", { ascending: true });
 
@@ -145,15 +176,48 @@ export default function Home() {
     loadProducts();
   }, []);
 
-  const featuredProducts = products.filter((p) => p.is_featured);
+  function addItemToLocalStorage(product: Product) {
+    const variants = prices[product.id] || [];
+    if (!variants.length) return;
 
+    const defaultVariant = variants[0];
+    const newItem: CartItem = {
+      productId: product.id,
+      slug: product.slug,
+      name: isArabic ? product.name_ar : product.name_en,
+      imageUrl: product.image_url,
+      size: defaultVariant.size_ml,
+      price: Number(defaultVariant.price),
+      quantity: 1,
+    };
+
+    try {
+      const existing = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+      const cartArray: CartItem[] = Array.isArray(existing) ? existing : [];
+      const foundIndex = cartArray.findIndex(
+        (item) =>
+          item.productId === newItem.productId && item.size === newItem.size
+      );
+
+      if (foundIndex > -1) {
+        cartArray[foundIndex].quantity += 1;
+      } else {
+        cartArray.push(newItem);
+      }
+
+      localStorage.setItem(CART_KEY, JSON.stringify(cartArray));
+      const totalItems = cartArray.reduce((sum, i) => sum + i.quantity, 0);
+      setCartCount(totalItems);
+    } catch (error) {
+      console.error("Failed to update cart:", error);
+    }
+  }
+
+  const featuredProducts = products.filter((p) => p.is_featured);
   const originalProducts = products.filter(
     (p) => p.product_type === "original"
   );
-
-  const customProducts = products.filter(
-    (p) => p.product_type === "custom"
-  );
+  const customProducts = products.filter((p) => p.product_type === "custom");
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat(isArabic ? "ar-EG" : "en-US").format(price);
@@ -161,10 +225,10 @@ export default function Home() {
   const entrance = shouldReduceMotion
     ? {}
     : {
-        initial: { opacity: 0, y: 35 },
+        initial: { opacity: 0, y: 30 },
         whileInView: { opacity: 1, y: 0 },
-        viewport: { once: true, amount: 0.15 },
-        transition: { duration: 0.8, ease: "easeOut" as const },
+        viewport: { once: true, amount: 0.12 },
+        transition: { duration: 0.7, ease: "easeOut" as const },
       };
 
   function ProductCard({ product }: { product: Product }) {
@@ -178,7 +242,7 @@ export default function Home() {
           shouldReduceMotion
             ? {}
             : {
-                y: -9,
+                y: -8,
                 transition: { duration: 0.3 },
               }
         }
@@ -191,50 +255,43 @@ export default function Home() {
                 src={product.image_url}
                 alt={isArabic ? product.name_ar : product.name_en}
                 className="h-full w-full object-cover"
-                whileHover={shouldReduceMotion ? {} : { scale: 1.08 }}
+                whileHover={shouldReduceMotion ? {} : { scale: 1.07 }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
               />
             ) : (
-              <motion.div
-                className="flex flex-col items-center gap-3 text-[#c5a36a]/50"
-                whileHover={shouldReduceMotion ? {} : { scale: 1.08 }}
-              >
-                <span className="text-5xl">✧</span>
-                <span className="text-xs tracking-[0.3em]">
+              <div className="flex flex-col items-center gap-3 text-[#c5a36a]/50">
+                <span className="text-4xl md:text-5xl">✧</span>
+                <span className="text-[10px] tracking-[0.3em] md:text-xs">
                   BAIT AL OUD
                 </span>
-              </motion.div>
+              </div>
             )}
 
             {product.is_featured && (
-              <span className="absolute left-4 top-4 rounded-full bg-[#c5a36a] px-3 py-1 text-[10px] font-semibold tracking-wider text-black">
+              <span className="absolute left-3 top-3 rounded-full bg-[#c5a36a] px-3 py-1 text-[10px] font-semibold tracking-wider text-black md:left-4 md:top-4">
                 {isArabic ? "مميز" : "FEATURED"}
               </span>
             )}
 
-            <motion.div
-              initial={{ opacity: 0 }}
-              whileHover={{ opacity: 1 }}
-              className="absolute inset-0 flex items-center justify-center bg-black/30"
-            >
+            <div className="absolute inset-0 hidden items-center justify-center bg-black/30 opacity-0 transition-opacity duration-300 group-hover:opacity-100 md:flex">
               <span className="border border-white/70 px-5 py-3 text-xs tracking-widest text-white">
                 {isArabic ? "اكتشف العطر" : "DISCOVER"}
               </span>
-            </motion.div>
+            </div>
           </div>
 
-          <div className="p-5">
-            <p className="mb-2 text-[10px] uppercase tracking-[0.25em] text-[#c5a36a]">
+          <div className="p-4 sm:p-5">
+            <p className="mb-1.5 text-[10px] uppercase tracking-[0.25em] text-[#c5a36a]">
               {product.product_type === "original"
                 ? "Original Collection"
                 : "Custom Collection"}
             </p>
 
-            <h3 className="text-lg text-white">
+            <h3 className="text-base font-medium text-white sm:text-lg">
               {isArabic ? product.name_ar : product.name_en}
             </h3>
 
-            <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-6 text-white/45">
+            <p className="mt-1.5 line-clamp-2 min-h-10 text-xs leading-6 text-white/45 sm:text-sm">
               {(isArabic
                 ? product.description_ar
                 : product.description_en) || ""}
@@ -242,30 +299,40 @@ export default function Home() {
           </div>
         </Link>
 
-        <div className="flex items-center justify-between border-t border-white/10 px-5 py-4">
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-3.5 sm:px-5 sm:py-4">
           <div>
             {lowestPrice !== null ? (
               <>
-                <span className="text-lg font-semibold text-[#c5a36a]">
+                <span className="text-base font-semibold text-[#c5a36a] sm:text-lg">
                   {formatPrice(lowestPrice)}
                 </span>
-                <span className="ml-1 text-xs text-white/40">EGP</span>
+                <span className="ml-1 text-[11px] text-white/40 sm:text-xs">
+                  EGP
+                </span>
               </>
             ) : (
-              <span className="text-sm text-white/40">
+              <span className="text-xs text-white/40 sm:text-sm">
                 {isArabic ? "السعر غير متاح" : "Price unavailable"}
               </span>
             )}
           </div>
 
-          <motion.button
-            whileHover={shouldReduceMotion ? {} : { scale: 1.05 }}
-            whileTap={shouldReduceMotion ? {} : { scale: 0.95 }}
-            onClick={() => setCartCount((count) => count + 1)}
-            className="rounded-full border border-[#c5a36a]/50 px-4 py-2 text-xs text-[#c5a36a] transition hover:bg-[#c5a36a] hover:text-black"
-          >
-            {isArabic ? "أضف للسلة" : "Add to cart"}
-          </motion.button>
+          <div className="flex items-center gap-2">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => addItemToLocalStorage(product)}
+              className="rounded-full border border-[#c5a36a]/50 px-3 py-1.5 text-xs text-[#c5a36a] transition hover:bg-[#c5a36a] hover:text-black sm:px-3.5 sm:py-2"
+            >
+              {isArabic ? "أضف للسلة" : "Add to cart"}
+            </motion.button>
+
+            <Link
+              href={`/products/${product.slug}`}
+              className="rounded-full bg-[#c5a36a] px-3.5 py-1.5 text-xs font-semibold text-black transition hover:bg-white sm:px-4 sm:py-2"
+            >
+              {isArabic ? "شراء" : "Buy"}
+            </Link>
+          </div>
         </div>
       </motion.article>
     );
@@ -285,22 +352,22 @@ export default function Home() {
     return (
       <motion.section
         {...entrance}
-        className="mx-auto max-w-7xl px-6 py-20"
+        className="mx-auto max-w-7xl px-5 py-14 sm:px-6 md:py-20"
       >
-        <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4 md:mb-10">
           <div>
-            <p className="mb-3 text-xs tracking-[0.35em] text-[#c5a36a]">
+            <p className="mb-2 text-[11px] tracking-[0.3em] text-[#c5a36a] md:mb-3 md:text-xs md:tracking-[0.35em]">
               {subtitle}
             </p>
 
-            <h2 className="font-serif text-3xl text-white md:text-4xl">
+            <h2 className="font-serif text-2xl text-white sm:text-3xl md:text-4xl">
               {title}
             </h2>
           </div>
 
           <Link
             href="/products"
-            className="text-sm text-[#c5a36a] transition hover:text-white"
+            className="text-xs text-[#c5a36a] transition hover:text-white sm:text-sm"
           >
             {isArabic ? "عرض الكل ←" : "View All →"}
           </Link>
@@ -310,8 +377,8 @@ export default function Home() {
           variants={shouldReduceMotion ? {} : stagger}
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, amount: 0.1 }}
-          className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          viewport={{ once: true, amount: 0.08 }}
+          className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:gap-6 lg:grid-cols-3"
         >
           {items.slice(0, 3).map((product) => (
             <ProductCard key={product.id} product={product} />
@@ -324,127 +391,178 @@ export default function Home() {
   return (
     <main
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen overflow-hidden bg-[#100f0d] text-white"
+      className="min-h-screen overflow-x-hidden bg-[#100f0d] text-white"
     >
       {/* NAVBAR */}
       <motion.header
-        initial={shouldReduceMotion ? false : { opacity: 0, y: -30 }}
+        initial={shouldReduceMotion ? false : { opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
+        transition={{ duration: 0.7 }}
         className="sticky top-0 z-50 border-b border-white/10 bg-[#100f0d]/95 backdrop-blur-xl"
       >
-        <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
-          <Link href="/" aria-label="Bait Al Oud" className="flex shrink-0 items-center">
+        <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:h-20 sm:px-6">
+          <Link
+            href="/"
+            aria-label="Bait Al Oud"
+            className="flex shrink-0 items-center"
+          >
             <img
               src="/logo.png"
               alt="بيت العود"
-              className="h-14 w-auto max-w-[150px] object-contain sm:h-16"
+              className="h-11 w-auto max-w-[130px] object-contain sm:h-15 sm:max-w-[150px]"
             />
           </Link>
 
-          <div className="hidden items-center gap-9 text-sm text-white/65 md:flex">
-            <a href="#home" className="transition hover:text-[#c5a36a]">
+          {/* Desktop Links */}
+          <div className="hidden items-center gap-8 text-sm text-white/65 md:flex lg:gap-9">
+            <a href="#home" className="nav-link transition hover:text-[#c5a36a]">
               {isArabic ? "الرئيسية" : "Home"}
             </a>
 
-            <a href="#categories" className="transition hover:text-[#c5a36a]">
+            <a
+              href="#categories"
+              className="nav-link transition hover:text-[#c5a36a]"
+            >
               {isArabic ? "التصنيفات" : "Categories"}
             </a>
 
-            <a href="#original" className="transition hover:text-[#c5a36a]">
+            <a
+              href="#original"
+              className="nav-link transition hover:text-[#c5a36a]"
+            >
               {isArabic ? "العطور الأصلية" : "Original Perfumes"}
             </a>
 
-            <a href="#custom" className="transition hover:text-[#c5a36a]">
+            <a
+              href="#custom"
+              className="nav-link transition hover:text-[#c5a36a]"
+            >
               {isArabic ? "العطور المخصصة" : "Custom Perfumes"}
             </a>
 
             <Link
               href="/custom-mix"
-              className="transition text-[#c5a36a] hover:text-white"
+              className="nav-link text-[#c5a36a] transition hover:text-white"
             >
               {isArabic ? "ركّب عطرك" : "Create Your Mix"}
             </Link>
 
-            <a href="#about" className="transition hover:text-[#c5a36a]">
+            <a
+              href="#about"
+              className="nav-link transition hover:text-[#c5a36a]"
+            >
               {isArabic ? "عن البراند" : "About Us"}
             </a>
           </div>
 
+          {/* Right Controls */}
           <div className="flex items-center gap-4">
             <button
               onClick={() =>
-                setLanguage((current) => current === "en" ? "ar" : "en")
+                setLanguage((current) => (current === "en" ? "ar" : "en"))
               }
-              className="text-xs text-[#c5a36a] hover:text-white"
+              className="rounded-full border border-[#c5a36a]/30 px-3 py-1 text-xs text-[#c5a36a] transition hover:border-[#c5a36a] hover:text-white"
             >
               {isArabic ? "English" : "العربية"}
             </button>
 
-            <motion.button
-              whileHover={shouldReduceMotion ? {} : { scale: 1.15 }}
-              whileTap={shouldReduceMotion ? {} : { scale: 0.9 }}
-              className="relative text-sm text-white"
+            <Link
+              href="/cart"
+              className="relative p-1 text-white transition hover:text-[#c5a36a]"
               aria-label="Shopping cart"
             >
-              ♧
+              <ShoppingBag size={20} />
               {cartCount > 0 && (
-                <span className="absolute -right-3 -top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#c5a36a] text-[10px] text-black">
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#c5a36a] text-[10px] font-bold text-black">
                   {cartCount}
                 </span>
               )}
-            </motion.button>
+            </Link>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-1 text-white transition hover:text-[#c5a36a] md:hidden"
+              aria-label="Toggle Menu"
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
           </div>
         </nav>
+
+        {/* Mobile Dropdown Menu */}
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex flex-col gap-4 border-t border-white/10 bg-[#141310] px-6 py-6 text-sm text-white/80 md:hidden"
+          >
+            <a
+              href="#home"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1 transition hover:text-[#c5a36a]"
+            >
+              {isArabic ? "الرئيسية" : "Home"}
+            </a>
+            <a
+              href="#categories"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1 transition hover:text-[#c5a36a]"
+            >
+              {isArabic ? "التصنيفات" : "Categories"}
+            </a>
+            <a
+              href="#original"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1 transition hover:text-[#c5a36a]"
+            >
+              {isArabic ? "العطور الأصلية" : "Original Perfumes"}
+            </a>
+            <a
+              href="#custom"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1 transition hover:text-[#c5a36a]"
+            >
+              {isArabic ? "العطور المخصصة" : "Custom Perfumes"}
+            </a>
+            <Link
+              href="/custom-mix"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1 font-semibold text-[#c5a36a]"
+            >
+              {isArabic ? "ركّب عطرك" : "Create Your Mix"}
+            </Link>
+            <a
+              href="#about"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1 transition hover:text-[#c5a36a]"
+            >
+              {isArabic ? "عن البراند" : "About Us"}
+            </a>
+          </motion.div>
+        )}
       </motion.header>
 
       {/* HERO */}
       <section
         ref={heroRef}
         id="home"
-        className="relative flex min-h-[650px] items-center overflow-hidden border-b border-white/10"
+        className="relative flex min-h-[540px] items-center overflow-hidden border-b border-white/10 md:min-h-[650px]"
       >
         <motion.div
-          style={
-            shouldReduceMotion
-              ? {}
-              : { y: heroY, opacity: heroOpacity }
-          }
-          className="absolute inset-0 bg-[radial-gradient(ellipse_at_75%_50%,rgba(160,112,48,0.2),transparent_55%)]"
+          style={shouldReduceMotion ? {} : { y: heroY, opacity: heroOpacity }}
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_75%_50%,rgba(160,112,48,0.2),transparent_60%)]"
         />
 
-        <motion.div
-          animate={
-            shouldReduceMotion
-              ? {}
-              : {
-                  scale: [1, 1.08, 1],
-                  opacity: [0.35, 0.75, 0.35],
-                }
-          }
-          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute right-[-10%] top-[-20%] h-[600px] w-[600px] rounded-full border border-[#c5a36a]/10"
-        />
-
-        <motion.div
-          animate={
-            shouldReduceMotion
-              ? {}
-              : {
-                  rotate: [0, 360],
-                }
-          }
-          transition={{ duration: 90, repeat: Infinity, ease: "linear" }}
-          className="absolute right-[-5%] top-[-10%] h-[500px] w-[500px] rounded-full border border-[#c5a36a]/10"
-        />
-
-        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-6 py-24 md:grid-cols-2">
-          <div className="max-w-xl">
+        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-8 px-5 py-12 sm:px-6 md:grid-cols-2 md:gap-12 md:py-24">
+          {/* Text Content */}
+          <div className="order-2 max-w-xl text-center md:order-1 md:text-start">
             <motion.p
-              initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
-              className="mb-6 text-xs tracking-[0.45em] text-[#c5a36a]"
+              transition={{ duration: 0.7, delay: 0.15 }}
+              className="mb-4 text-[11px] tracking-[0.35em] text-[#c5a36a] md:mb-6 md:text-xs md:tracking-[0.45em]"
             >
               {isArabic ? "فن العطور الفاخرة" : "THE ART OF LUXURY FRAGRANCE"}
             </motion.p>
@@ -453,11 +571,11 @@ export default function Home() {
               initial={
                 shouldReduceMotion
                   ? false
-                  : { opacity: 0, y: 55, filter: "blur(12px)" }
+                  : { opacity: 0, y: 35, filter: "blur(8px)" }
               }
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              transition={{ duration: 1.2, ease: "easeOut" }}
-              className="font-serif text-5xl leading-tight text-white md:text-7xl"
+              transition={{ duration: 1, ease: "easeOut" }}
+              className="font-serif text-4xl leading-tight text-white sm:text-5xl md:text-7xl"
             >
               {isArabic ? (
                 <>
@@ -472,10 +590,10 @@ export default function Home() {
             </motion.h1>
 
             <motion.p
-              initial={shouldReduceMotion ? false : { opacity: 0, y: 25 }}
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.9, delay: 0.5 }}
-              className="mt-7 max-w-md text-sm leading-8 text-white/55"
+              transition={{ duration: 0.8, delay: 0.4 }}
+              className="mx-auto mt-5 max-w-md text-xs leading-7 text-white/55 sm:text-sm sm:leading-8 md:mx-0 md:mt-7"
             >
               {isArabic
                 ? "اكتشف عالمًا من الروائح الاستثنائية، حيث تلتقي الفخامة بالأصالة في كل قطرة."
@@ -483,40 +601,39 @@ export default function Home() {
             </motion.p>
 
             <motion.div
-              initial={shouldReduceMotion ? false : { opacity: 0, y: 25 }}
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.9, delay: 0.8 }}
-              className="mt-10 flex flex-wrap gap-4"
+              transition={{ duration: 0.8, delay: 0.6 }}
+              className="mt-8 flex flex-col justify-center gap-3 sm:flex-row md:mt-10 md:justify-start md:gap-4"
             >
               <motion.a
-                whileHover={shouldReduceMotion ? {} : { y: -5, scale: 1.03 }}
-                whileTap={shouldReduceMotion ? {} : { scale: 0.97 }}
+                whileTap={{ scale: 0.97 }}
                 href="#collection"
-                className="bg-[#c5a36a] px-8 py-4 text-xs font-semibold tracking-wider text-black transition hover:bg-white"
+                className="w-full bg-[#c5a36a] px-7 py-3.5 text-center text-xs font-semibold tracking-wider text-black transition hover:bg-white sm:w-auto sm:px-8 sm:py-4"
               >
                 {isArabic ? "اكتشف المجموعة" : "EXPLORE COLLECTION"}
               </motion.a>
 
               <motion.a
-                whileHover={shouldReduceMotion ? {} : { y: -5 }}
+                whileTap={{ scale: 0.97 }}
                 href="#about"
-                className="border border-white/25 px-8 py-4 text-xs tracking-wider text-white transition hover:border-[#c5a36a] hover:text-[#c5a36a]"
+                className="w-full border border-white/25 px-7 py-3.5 text-center text-xs tracking-wider text-white transition hover:border-[#c5a36a] hover:text-[#c5a36a] sm:w-auto sm:px-8 sm:py-4"
               >
                 {isArabic ? "اكتشف عالمنا" : "OUR STORY"}
               </motion.a>
             </motion.div>
           </div>
 
-          {/* ANIMATED BRAND MARK */}
+          {/* ANIMATED BRAND MARK (Compact on Mobile) */}
           <motion.div
             initial={
               shouldReduceMotion
                 ? false
-                : { opacity: 0, scale: 0.7, rotate: -12 }
+                : { opacity: 0, scale: 0.8, rotate: -8 }
             }
             animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            transition={{ duration: 1.4, delay: 0.3, ease: "easeOut" }}
-            className="relative mx-auto flex h-[420px] w-full max-w-md items-center justify-center"
+            transition={{ duration: 1.2, delay: 0.2, ease: "easeOut" }}
+            className="relative order-1 mx-auto flex h-[250px] w-full max-w-xs items-center justify-center sm:h-[320px] sm:max-w-sm md:order-2 md:h-[420px] md:max-w-md"
           >
             <motion.div
               animate={
@@ -528,7 +645,7 @@ export default function Home() {
                 rotate: { duration: 80, repeat: Infinity, ease: "linear" },
                 scale: { duration: 5, repeat: Infinity, ease: "easeInOut" },
               }}
-              className="absolute h-[350px] w-[350px] rounded-full border border-[#c5a36a]/20"
+              className="absolute h-[220px] w-[220px] rounded-full border border-[#c5a36a]/20 sm:h-[280px] sm:w-[280px] md:h-[350px] md:w-[350px]"
             />
 
             <motion.div
@@ -541,22 +658,22 @@ export default function Home() {
                 rotate: { duration: 65, repeat: Infinity, ease: "linear" },
                 opacity: { duration: 5, repeat: Infinity },
               }}
-              className="absolute h-[290px] w-[290px] rounded-full border border-[#c5a36a]/30"
+              className="absolute h-[175px] w-[175px] rounded-full border border-[#c5a36a]/30 sm:h-[230px] sm:w-[230px] md:h-[290px] md:w-[290px]"
             />
 
             <motion.div
-              animate={shouldReduceMotion ? {} : { y: [0, -13, 0] }}
+              animate={shouldReduceMotion ? {} : { y: [0, -10, 0] }}
               transition={{
                 duration: 5,
                 repeat: Infinity,
                 ease: "easeInOut",
               }}
-              className="relative flex w-full items-center justify-center px-5"
+              className="relative flex w-full items-center justify-center px-4"
             >
               <img
                 src="/logo.png"
                 alt="بيت العود"
-                className="h-auto w-full max-w-[340px] object-contain drop-shadow-[0_12px_35px_rgba(197,163,106,0.18)]"
+                className="h-auto w-full max-w-[190px] object-contain drop-shadow-[0_12px_35px_rgba(197,163,106,0.18)] sm:max-w-[250px] md:max-w-[340px]"
               />
             </motion.div>
           </motion.div>
@@ -573,7 +690,7 @@ export default function Home() {
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
-          className="mx-auto grid max-w-7xl grid-cols-1 divide-y divide-white/10 px-6 md:grid-cols-3 md:divide-x md:divide-y-0"
+          className="mx-auto grid max-w-7xl grid-cols-1 divide-y divide-white/10 px-5 sm:px-6 md:grid-cols-3 md:divide-x md:divide-y-0"
         >
           {[
             ["✧", "Authentic Fragrances", "Original branded perfumes"],
@@ -583,13 +700,16 @@ export default function Home() {
             <motion.div
               key={title}
               variants={reveal}
-              whileHover={shouldReduceMotion ? {} : { y: -5 }}
-              className="flex items-center gap-5 px-8 py-8 transition-colors hover:bg-[#c5a36a]/5"
+              className="flex items-center gap-4 px-4 py-5 transition-colors hover:bg-[#c5a36a]/5 sm:gap-5 sm:px-8 sm:py-8"
             >
-              <span className="text-3xl text-[#c5a36a]">{icon}</span>
+              <span className="text-2xl text-[#c5a36a] sm:text-3xl">
+                {icon}
+              </span>
               <div>
-                <h3 className="text-sm text-white">{title}</h3>
-                <p className="mt-1 text-xs text-white/40">{subtitle}</p>
+                <h3 className="text-sm font-medium text-white">{title}</h3>
+                <p className="mt-0.5 text-xs text-white/40 sm:mt-1">
+                  {subtitle}
+                </p>
               </div>
             </motion.div>
           ))}
@@ -601,14 +721,14 @@ export default function Home() {
         <motion.section
           id="categories"
           {...entrance}
-          className="mx-auto max-w-7xl border-b border-white/10 px-6 py-20"
+          className="mx-auto max-w-7xl border-b border-white/10 px-5 py-14 sm:px-6 md:py-20"
         >
-          <div className="mb-10 text-center">
-            <p className="mb-3 text-xs tracking-[0.35em] text-[#c5a36a]">
+          <div className="mb-8 text-center md:mb-10">
+            <p className="mb-2 text-[11px] tracking-[0.3em] text-[#c5a36a] md:mb-3 md:text-xs md:tracking-[0.35em]">
               {isArabic ? "تسوق حسب النوع" : "EXPLORE BY CATEGORY"}
             </p>
 
-            <h2 className="font-serif text-3xl text-white md:text-4xl">
+            <h2 className="font-serif text-2xl text-white sm:text-3xl md:text-4xl">
               {isArabic ? "تصنيفات العطور" : "Our Categories"}
             </h2>
           </div>
@@ -617,30 +737,28 @@ export default function Home() {
             variants={shouldReduceMotion ? {} : stagger}
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, amount: 0.1 }}
-            className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+            viewport={{ once: true, amount: 0.08 }}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-5 lg:grid-cols-3"
           >
             {categories.map((category) => (
-              <motion.div
-                key={category.id}
-                variants={reveal}
-                whileHover={shouldReduceMotion ? {} : { y: -6 }}
-              >
+              <motion.div key={category.id} variants={reveal}>
                 <Link
-                  href={`/products?category=${encodeURIComponent(category.slug)}`}
-                  className="group flex min-h-36 items-center justify-between rounded-2xl border border-white/10 bg-[#181715] p-7 transition duration-300 hover:border-[#c5a36a]/60 hover:bg-[#211e19]"
+                  href={`/products?category=${encodeURIComponent(
+                    category.slug
+                  )}`}
+                  className="group flex min-h-28 items-center justify-between rounded-2xl border border-white/10 bg-[#181715] p-5 transition duration-300 hover:border-[#c5a36a]/60 hover:bg-[#211e19] sm:min-h-36 sm:p-7"
                 >
                   <div>
-                    <p className="mb-3 text-[10px] tracking-[0.3em] text-[#c5a36a]">
+                    <p className="mb-2 text-[10px] tracking-[0.3em] text-[#c5a36a] sm:mb-3">
                       BAIT AL OUD
                     </p>
 
-                    <h3 className="font-serif text-2xl text-white transition group-hover:text-[#c5a36a]">
+                    <h3 className="font-serif text-xl text-white transition group-hover:text-[#c5a36a] sm:text-2xl">
                       {isArabic ? category.name_ar : category.name_en}
                     </h3>
                   </div>
 
-                  <span className="text-3xl text-[#c5a36a]">
+                  <span className="text-2xl text-[#c5a36a] sm:text-3xl">
                     {isArabic ? "←" : "→"}
                   </span>
                 </Link>
@@ -653,21 +771,21 @@ export default function Home() {
       {/* CREATE YOUR OWN FRAGRANCE */}
       <motion.section
         {...entrance}
-        className="relative overflow-hidden border-y border-[#c5a36a]/20 bg-[#181715] px-6 py-24 text-center"
+        className="relative overflow-hidden border-y border-[#c5a36a]/20 bg-[#181715] px-5 py-16 text-center sm:px-6 md:py-24"
       >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_50%,rgba(197,163,106,0.12),transparent_65%)]" />
 
         <div className="relative mx-auto max-w-3xl">
           <Sparkles
-            size={32}
-            className="mx-auto mb-6 text-[#c5a36a]"
+            size={28}
+            className="mx-auto mb-4 text-[#c5a36a] sm:mb-6 sm:h-8 sm:w-8"
           />
 
-          <p className="text-xs tracking-[0.4em] text-[#c5a36a]">
+          <p className="text-[11px] tracking-[0.35em] text-[#c5a36a] sm:text-xs sm:tracking-[0.4em]">
             {isArabic ? "تجربة عطرية فريدة" : "A UNIQUE FRAGRANCE EXPERIENCE"}
           </p>
 
-          <h2 className="mt-6 font-serif text-4xl leading-tight text-white md:text-6xl">
+          <h2 className="mt-4 font-serif text-3xl leading-tight text-white sm:mt-6 sm:text-4xl md:text-6xl">
             {isArabic ? (
               <>
                 اصنع عطرك <span className="text-[#c5a36a]">الخاص</span>
@@ -680,7 +798,7 @@ export default function Home() {
             )}
           </h2>
 
-          <p className="mx-auto mt-6 max-w-xl text-sm leading-8 text-white/50">
+          <p className="mx-auto mt-4 max-w-xl text-xs leading-7 text-white/50 sm:mt-6 sm:text-sm sm:leading-8">
             {isArabic
               ? "اختر العطور التي تحبها، وامزجها بطريقتك الخاصة. فريقنا سيحول فكرتك إلى تركيبة عطرية مميزة."
               : "Choose the fragrances you love and combine them your way. Our team will help turn your idea into a unique fragrance."}
@@ -688,10 +806,10 @@ export default function Home() {
 
           <Link
             href="/custom-mix"
-            className="mt-10 inline-flex items-center gap-3 bg-[#c5a36a] px-9 py-4 text-xs font-semibold tracking-wider text-black transition hover:bg-white"
+            className="mt-8 inline-flex w-full items-center justify-center gap-3 bg-[#c5a36a] px-8 py-3.5 text-xs font-semibold tracking-wider text-black transition hover:bg-white sm:mt-10 sm:w-auto sm:px-9 sm:py-4"
           >
             {isArabic ? "ابدأ تركيب عطرك" : "CREATE YOUR OWN MIX"}
-            {isArabic ? <ArrowLeft size={17} /> : <ArrowRight size={17} />}
+            {isArabic ? <ArrowLeft size={16} /> : <ArrowRight size={16} />}
           </Link>
         </div>
       </motion.section>
@@ -699,7 +817,7 @@ export default function Home() {
       {/* COLLECTIONS */}
       <div id="collection">
         {loading ? (
-          <div className="py-28 text-center text-[#c5a36a]">
+          <div className="py-20 text-center text-sm text-[#c5a36a] md:py-28">
             <motion.div
               animate={shouldReduceMotion ? {} : { rotate: 360 }}
               transition={{
@@ -707,7 +825,7 @@ export default function Home() {
                 repeat: Infinity,
                 ease: "linear",
               }}
-              className="mx-auto mb-5 h-8 w-8 rounded-full border-2 border-[#c5a36a]/20 border-t-[#c5a36a]"
+              className="mx-auto mb-4 h-7 w-7 rounded-full border-2 border-[#c5a36a]/20 border-t-[#c5a36a] sm:h-8 sm:w-8"
             />
             {isArabic ? "جاري تحميل العطور..." : "Loading fragrances..."}
           </div>
@@ -738,12 +856,12 @@ export default function Home() {
             {products.length === 0 && (
               <motion.div
                 {...entrance}
-                className="py-24 text-center"
+                className="px-5 py-16 text-center md:py-24"
               >
-                <p className="font-serif text-3xl text-white">
+                <p className="font-serif text-2xl text-white sm:text-3xl">
                   {isArabic ? "قريبًا..." : "Coming Soon"}
                 </p>
-                <p className="mt-3 text-sm text-white/40">
+                <p className="mt-2 text-xs text-white/40 sm:mt-3 sm:text-sm">
                   {isArabic
                     ? "نعمل على تجهيز مجموعتنا المميزة."
                     : "Our fragrance collection is being prepared."}
@@ -758,57 +876,33 @@ export default function Home() {
       <motion.section
         id="about"
         {...entrance}
-        className="border-y border-white/10 bg-[#171512] px-6 py-24 text-center"
+        className="border-y border-white/10 bg-[#171512] px-5 py-16 text-center sm:px-6 md:py-24"
       >
-        <motion.p
-          initial={shouldReduceMotion ? false : { opacity: 0, y: 15 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="text-xs tracking-[0.4em] text-[#c5a36a]"
-        >
+        <p className="text-[11px] tracking-[0.35em] text-[#c5a36a] sm:text-xs sm:tracking-[0.4em]">
           OUR PHILOSOPHY
-        </motion.p>
+        </p>
 
-        <motion.h2
-          initial={
-            shouldReduceMotion
-              ? false
-              : { opacity: 0, y: 35, filter: "blur(8px)" }
-          }
-          whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          viewport={{ once: true }}
-          transition={{ duration: 1 }}
-          className="mx-auto mt-6 max-w-2xl font-serif text-3xl leading-relaxed text-white md:text-5xl"
-        >
+        <h2 className="mx-auto mt-4 max-w-2xl font-serif text-2xl leading-relaxed text-white sm:mt-6 sm:text-3xl md:text-5xl">
           {isArabic
             ? "الفخامة ليست مجرد رائحة، بل إحساس يبقى."
             : "Luxury is not just a fragrance. It is a feeling that stays."}
-        </motion.h2>
+        </h2>
 
-        <motion.p
-          initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="mx-auto mt-6 max-w-xl text-sm leading-8 text-white/45"
-        >
+        <p className="mx-auto mt-4 max-w-xl text-xs leading-7 text-white/45 sm:mt-6 sm:text-sm sm:leading-8">
           {isArabic
             ? "في بيت العود، نؤمن أن لكل شخص بصمته الخاصة، ونقدم لك عطورًا تعبر عن شخصيتك."
             : "At Bait Al Oud, we believe every person has a signature. We bring you fragrances that express who you are."}
-        </motion.p>
+        </p>
       </motion.section>
 
       {/* FOOTER */}
-      <motion.footer
-        {...entrance}
-        className="px-6 py-12"
-      >
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 md:flex-row">
+      <motion.footer {...entrance} className="px-5 py-10 sm:px-6 md:py-12">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 text-center md:flex-row md:text-start">
           <div className="flex justify-center md:justify-start">
             <img
               src="/logo.png"
               alt="بيت العود"
-              className="h-auto w-36 object-contain"
+              className="h-auto w-28 object-contain sm:w-36"
             />
           </div>
 
